@@ -9,7 +9,7 @@ with the `cirq.Simulator` interface.
 ```bash
 python3 -m virtualenv venv --python=python3.8  # At least Python 3.7
 source venv/bin/activate
-pip install -e .
+pip install floq_client
 ```
 
 ## Usage
