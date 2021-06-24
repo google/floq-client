@@ -1,53 +1,149 @@
-# New Project Template
+# Floq API client
 
-This repository contains a template that can be used to seed a repository for a
-new Google open source project.
+This client uses the cirq interface to submit quantum circuits to the Floq
+Service. This client is designed to be simple to use for those familiar
+with the `cirq.Simulator` interface.
 
-See [go/releasing](http://go/releasing) (available externally at
-https://opensource.google/docs/releasing/) for more information about
-releasing a new Google open source project.
+## Installation
 
-This template uses the Apache license, as is Google's default.  See the
-documentation for instructions on using alternate license.
-
-## How to use this template
-
-1. Clone it from GitHub.
-    * There is no reason to fork it.
-1. Create a new local repository and copy the files from this repo into it.
-1. Modify README.md and docs/contributing.md to represent your project, not the
-   template project.
-1. Develop your new project!
-
-``` shell
-git clone https://github.com/google/new-project
-mkdir my-new-thing
-cd my-new-thing
-git init
-cp -r ../new-project/* ../new-project/.github .
-git add *
-git commit -a -m 'Boilerplate for new Google open source project'
+```bash
+python3 -m virtualenv venv --python=python3.8  # At least Python 3.7
+source venv/bin/activate
+pip install -e .
 ```
 
-## Source Code Headers
+## Usage
 
-Every file containing source code must include copyright and license
-information. This includes any JS/CSS files that you might be serving out to
-browsers. (This is to help well-intentioned people avoid accidental copying that
-doesn't comply with the license.)
+Currently the Floq client supports cirq's `SimulatesSamples` and the
+`SimulatesExpectationValues` simulators. These interfaces include methods for
+running sampling and calculating expectation values of single circuits, batches
+of circuits or circuits to be resolved with parameter value sweeps.
 
-Apache header:
+Check out samples in the [samples](./samples) directory.
 
-    Copyright 2021 Google LLC
+### SimulatesSamples
 
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
+```python
+import floq.client
 
-        https://www.apache.org/licenses/LICENSE-2.0
+qubits = cirq.LineQubit.range(26)
+param_resolver = cirq.ParamResolver({'a': 1})
+a = sympy.Symbol('a')
+circuit = cirq.Circuit(
+    [cirq.X(q) ** a for q in qubits] +
+    [cirq.measure(q) for q in qubits])
 
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
+client = floq.client.CirqClient("my_api_key")
+result = client.simulator.run(circuit, param_resolver) # Results from the cloud hurray!
+```
+
+See
+[SimulatesSamples](https://quantumai.google/reference/python/cirq/sim/SimulatesSamples)
+interface documentation for more information.
+
+> Note: This client does not support the `async` run calls currently.
+
+### SimulatesExpectationValues
+
+See
+[SimulatesExpectationValues](https://quantumai.google/reference/python/cirq/sim/SimulatesExpectationValues)
+interface documentation for more information.
+
+The client also provides calculation of expectation values against
+`cirq.PauliSum` observables:
+
+```python
+import floq.client
+
+client = floq.client.CirqClient("my_api_key")
+
+# Find expectation against a single Paulisum
+magnetization_op = sum([cirq.Z(q) for q in qubits])
+client.simulator.simulate_expectation_values(
+    circuit,
+    magnetization_op,
+    param_resolvers)
+
+    # returns [exp_value]
+
+# Or against multiple
+client.simulator.simulate_expectation_values(
+    circuit,
+    [magnetization_op, cirq.X(qubits[0]) + cirq.Y(qubits[0])]
+)
+    # returns [exp1, exp2] - one expectation per observable
+
+# Also run sweeps over param_resolver values
+client.simulator.simulate_expectation_values_sweep(
+    circuit,
+    [observable1, observable2],
+    cirq.Sweepable
+)
+    # returns [[exp1, exp2], ...] - one list of expectations per param set
+```
+
+> Note: The SimulatesExpectationValues interface is available in cirq>=0.10.0.
+
+### Jobs Queue manager
+
+Floq client also provides an interface for inspecting and flushing pending jobs
+queue. Each time a quantum circuit is submitted to the cloud, the Floq service
+replies with unique job id and the job is queued for the execution.
+
+The example code is located in [jobs_queue.py](./samples/jobs_queue.py) sample
+file.
+
+### TPU worker manager
+
+Each individual API key is bound to dedicated TPU worker running in the cloud.
+The Floq Client provides an interace for starting, stopping or restarting the
+worker (in case it enters into some unexpected state). Additionally, you can
+always check current worker status.
+
+The example code is located in [worker_manager.py](./samples/worker_manager.py)
+sample file.
+
+## CLI script
+
+Both jobs queue and TPU worker can be controlled manually using provided
+[CLI script](./scripts/cli.py). Simply provide Floq API key as the input
+argument and the resource command as shown below:
+
+```shell
+# Jobs queue commands
+floq-client API_KEY jobs {display,flush}
+
+# TPU worker commands
+floq-client API_KEY worker {restart,start,stop,status}
+```
+
+## PennyLane-Cirq with Floq
+
+To use Floq-backend in PennyLane, please install the latest version of
+[PennyLane-Cirq](https://github.com/PennyLaneAI/pennylane-cirq) plugin.
+The sample code is located in the [pennylane.py](./samples/pennylane.py) file.
+
+## Caveats
+
+Keep in mind that you are on the frontier and this is a very experimental
+service! There will be trials, tribulations, and bugs!
+
+Please let us know about issues you encounter and mail us at
+[floq-devs@google.com](mailto:floq-devs@google.com).
+
+That being said there are a few known limitations at this point. In order to be
+conservative we have implemented restrictions on the size of circuits, number
+of observables, etc... We are working hard to push this forward, bear with us.
+
+This client also has some limitations due to its dependence on cirq. A known
+issue in cirq 0.9.1 is deficiency in serialization. Cirq does not currently
+support serialization of gates parameterized on more than one symbol.
+Because Cirq rx, ry, and rz gates depend on an implicit internal symbol they
+can fail. This is actively being resolved! **In the meantime try using XPow,
+YPow, ZPow gates instead:**
+
+```python
+cirq.rx(s) -> cirq.XPowGate(exponent=s / np.pi, global_shift=-0.5)
+```
+
+Enjoy!
