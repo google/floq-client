@@ -62,6 +62,11 @@ class AbstractRemoteSimulator(abc.ABC):
         self._job_id: Optional[uuid.UUID] = None
         self._results_schema = schema
 
+    @property
+    def can_resume_polling(self) -> bool:
+        """Indicates if can resume polling job results."""
+        return self._job_id is not None
+
     def resume_polling(self, timeout: int = _TIMEOUT) -> Any:
         """Resumes job pooling.
 
@@ -72,13 +77,16 @@ class AbstractRemoteSimulator(abc.ABC):
             timeout: Maximum number of seconds to wait for simulation to
             complete.
 
+        Returns:
+            Simulation job results or None if cannot resume polling.
+
         Raises:
             ResumePollingError if no job have been previously queried.
             SimulationError if the job failed.
             TimeoutError if the job has not finished within given time limit.
         """
-        if not self._job_id:
-            raise errors.ResumePollingError()
+        if not self.can_resume_polling:
+            return None
 
         return self._poll_results(timeout)
 

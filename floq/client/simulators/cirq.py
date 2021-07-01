@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Union
 import cirq
 import numpy as np
 
-from .. import schemas
+from .. import errors, schemas
 from . import floq
 
 
@@ -191,3 +191,23 @@ class CirqSimulator(
             )
             for param_resolver in cirq.to_resolvers(params)
         ]
+
+    def resume_polling(self) -> Any:
+        """Resumes job pooling.
+
+        If the previous polling attempt failed due to TimeoutError, calling this
+        function will result in resuming polling until job finished execution.
+
+        Returns:
+            Simulation job results.
+
+        Raises:
+            ResumePollingError if no job have been previously queried.
+            SimulationError if the job failed.
+            TimeoutError if the job has not finished within given time limit.
+        """
+        sim = next((x for x in self._simulators.values() if x.can_resume_polling), None)
+        if sim is None:
+            raise errors.ResumePollingError()
+
+        return sim.resume_polling()
