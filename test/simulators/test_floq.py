@@ -237,12 +237,6 @@ class TestSamplesSimulator(TestRemoteSimulator):
         ]
         self.assertEqual(self.mocked_sleep.call_args_list, call_args_list)
 
-    def test_resume_polling_error(self) -> None:
-        """Tests resume_polling method behavior: no previous job id."""
-        # Run test
-        with self.assertRaises(errors.ResumePollingError):
-            self.simulator.resume_polling()
-
     def test_serialization_error(self) -> None:
         """Tests serialization error."""
         with self.assertRaises(errors.SerializationError):
