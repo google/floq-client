@@ -36,7 +36,7 @@ class AbstractClient(abc.ABC):  # pylint: disable=too-few-public-methods
         self._container.core.config.from_dict(
             {
                 "api_key": api_key,
-                "hostname": "floq.endpoints.quantum-x99.cloud.goog",
+                "hostname": "floq.endpoints.sandbox-at-alphabet-floq-prod.cloud.goog",
                 "use_ssl": True,
             }
         )
