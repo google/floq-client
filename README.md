@@ -135,15 +135,4 @@ That being said there are a few known limitations at this point. In order to be
 conservative we have implemented restrictions on the size of circuits, number
 of observables, etc... We are working hard to push this forward, bear with us.
 
-This client also has some limitations due to its dependence on cirq. A known
-issue in cirq 0.9.1 is deficiency in serialization. Cirq does not currently
-support serialization of gates parameterized on more than one symbol.
-Because Cirq rx, ry, and rz gates depend on an implicit internal symbol they
-can fail. This is actively being resolved! **In the meantime try using XPow,
-YPow, ZPow gates instead:**
-
-```python
-cirq.rx(s) -> cirq.XPowGate(exponent=s / np.pi, global_shift=-0.5)
-```
-
 Enjoy!

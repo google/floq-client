@@ -35,17 +35,16 @@ class JobsQueueManager:
     def __init__(
         self,
         client: api_client.ApiClient,
-        handler: sse.TaskStatusStreamHandler,
+        handler: sse.EventStreamHandler,
     ) -> None:
         """Creates JobsQueueManager class instance.
 
         Args:
             client: Reference to ApiClient object.
-            handler: Reference to AbstractEventStreamHandler type object.
+            handler: Reference to EventStreamHandler type object.
         """
         self._client = client
         self._handler = handler
-        self._handler.listener = self.on_jobs_queue_flushed
 
     def flush(self) -> None:
         """Clears jobs queue.
@@ -54,7 +53,13 @@ class JobsQueueManager:
         events stream.
         """
         response = self._client.delete("jobs/queue")
-        self._handler.open_stream(response.text)
+
+        task: schemas.TaskSubmitted = schemas.decode(
+            schemas.TaskSubmittedSchema, response.text
+        )
+        url = f"tasks/{str(task.id)}/stream"
+
+        self._handler.open_stream(url, self.on_jobs_queue_flushed)
 
     def get(self) -> schemas.JobsQueue:
         """Gets jobs queue.

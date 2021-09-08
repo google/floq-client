@@ -45,6 +45,7 @@ class Core(dependency_injector.containers.DeclarativeContainer):
         api_key=config.api_key,
         use_ssl=config.use_ssl,
     )
+
     TaskStatusStreamHandler = dependency_injector.providers.Factory(
         sse.TaskStatusStreamHandler, client=ApiClient
     )
@@ -75,10 +76,18 @@ class Simulators(dependency_injector.containers.DeclarativeContainer):
     remote_simulators = dependency_injector.providers.Dict(
         {
             schemas.JobType.EXPECTATION: dependency_injector.providers.Factory(
-                simulators.ExpectationValuesSimulator, client=core.ApiClient
+                simulators.ExpectationValuesSimulator,
+                client=core.ApiClient,
+                handler=dependency_injector.providers.Factory(
+                    sse.ExpectationJobStatusStreamHandler, client=core.ApiClient
+                ),
             ),
             schemas.JobType.SAMPLE: dependency_injector.providers.Factory(
-                simulators.SamplesSimulator, client=core.ApiClient
+                simulators.SamplesSimulator,
+                client=core.ApiClient,
+                handler=dependency_injector.providers.Factory(
+                    sse.SampleJobStatusStreamHandler, client=core.ApiClient
+                ),
             ),
         }
     )
@@ -93,6 +102,4 @@ class Client(dependency_injector.containers.DeclarativeContainer):
 
     core = dependency_injector.providers.Container(Core)
     managers = dependency_injector.providers.Container(Managers, core=core)
-    simulators = dependency_injector.providers.Container(
-        Simulators, core=core
-    )
+    simulators = dependency_injector.providers.Container(Simulators, core=core)

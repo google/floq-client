@@ -19,7 +19,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="floq-client",
-    version="0.1.1",
+    version="0.1.4",
     author="Floq Team",
     author_email="floq-devs@google.com",
     description="Floq Service client",
@@ -27,12 +27,13 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     packages=setuptools.find_namespace_packages(),
     install_requires=[
-        "cirq==0.10.0",
+        "cirq==0.11.0",
         "dependency-injector>=4.20.2",
         "marshmallow>=3.10.0",
         "marshmallow-dataclass>=8.3.1",
         "marshmallow-enum>=1.5.1",
         "requests>=2.24.0",
+        "typeguard>=2.12.1"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

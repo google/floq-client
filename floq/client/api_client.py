@@ -42,7 +42,9 @@ class ApiClient:
         self._api_url = f"{protocol}://{hostname}/api/v{str(version)}"
 
         self._session = requests.Session()
-        self._session.headers.update({"X-API-Key": api_key})
+        self._session.headers.update(
+            {"Accept": "application/json", "X-API-Key": api_key}
+        )
 
     def get(self, path: str, stream: bool = False) -> requests.Response:
         """Sends GET request to the service.
@@ -107,7 +109,11 @@ class ApiClient:
         """
         try:
             response = self._session.request(
-                method, os.path.join(self._api_url, path), *args, **kwargs
+                method,
+                os.path.join(self._api_url, path),
+                *args,
+                timeout=30.0,
+                **kwargs,
             )
             response.raise_for_status()
         except requests.HTTPError as error:

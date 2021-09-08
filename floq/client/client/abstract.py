@@ -46,7 +46,8 @@ class AbstractClient(abc.ABC):  # pylint: disable=too-few-public-methods
         """Floq service jobs queue manager."""
         return self._container.managers.JobsQueueManager()
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def simulator(self) -> Any:
         """Floq service client simulator."""
 

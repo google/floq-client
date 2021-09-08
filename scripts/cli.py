@@ -129,7 +129,7 @@ class JobsQueueClient(AbstractServiceClient):
         queue.
         """
         buffer = []
-        for idx, job_id in enumerate(self._client.jobs_queue.get()):
+        for idx, job_id in enumerate(self._client.jobs_queue.get().ids):
             job = self._client.jobs_queue.get_pending_job(job_id)
             buffer.append(
                 f"idx: {idx}, id: {str(job.id)}, type: {job.type.name},"
@@ -204,7 +204,7 @@ class TPUWorkerClient(AbstractServiceClient):
         """Handles worker status command."""
         status = self._client.tpu_worker.status()
 
-        msg = f"Worker state: {status.state}"
+        msg = f"Worker state: {status.state.name}"
         if status.state == schemas.WorkerState.PROCESSING_JOB:
             msg = f"{msg}, job id: {status.job_id}"
         elif status.state == schemas.WorkerState.ERROR:

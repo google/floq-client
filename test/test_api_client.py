@@ -77,7 +77,7 @@ class TestApiClient(unittest.TestCase):
         self.mocked_session.assert_called_once_with()
         self.assertEqual(
             self.mocked_session.headers,
-            {"X-API-Key": self.API_KEY},
+            {"Accept": "application/json", "X-API-Key": self.API_KEY},
         )
 
     def test_get(self) -> None:
@@ -88,7 +88,7 @@ class TestApiClient(unittest.TestCase):
         # Verification
         self.assertEqual(response, self.mocked_response)
         self.mocked_session.request.assert_called_once_with(
-            "get", self._get_url(self.API_PATH), stream=False
+            "get", self._get_url(self.API_PATH), stream=False, timeout=30.0
         )
 
     def test_get_api_error(self) -> None:
@@ -112,7 +112,7 @@ class TestApiClient(unittest.TestCase):
 
         # Verification
         self.mocked_session.request.assert_called_once_with(
-            "get", self._get_url(self.API_PATH), stream=False
+            "get", self._get_url(self.API_PATH), stream=False, timeout=30.0
         )
 
     def test_get_api_invalid_error(self) -> None:
@@ -129,7 +129,7 @@ class TestApiClient(unittest.TestCase):
 
         # Verification
         self.mocked_session.request.assert_called_once_with(
-            "get", self._get_url(self.API_PATH), stream=False
+            "get", self._get_url(self.API_PATH), stream=False, timeout=30.0
         )
 
     def test_get_api_unknown_error(self) -> None:
@@ -145,7 +145,7 @@ class TestApiClient(unittest.TestCase):
 
         # Verification
         self.mocked_session.request.assert_called_once_with(
-            "get", self._get_url(self.API_PATH), stream=False
+            "get", self._get_url(self.API_PATH), stream=False, timeout=30.0
         )
 
     def test_post(self) -> None:
@@ -165,6 +165,7 @@ class TestApiClient(unittest.TestCase):
                 "Content-Length": str(len(test_data)),
                 "Content-Type": "application/json",
             },
+            timeout=30.0
         )
 
     def test_delete(self) -> None:
@@ -175,7 +176,7 @@ class TestApiClient(unittest.TestCase):
         # Verification
         self.assertEqual(response, self.mocked_response)
         self.mocked_session.request.assert_called_once_with(
-            "delete", self._get_url(self.API_PATH)
+            "delete", self._get_url(self.API_PATH), timeout=30.0
         )
 
     def _get_url(self, path: str = "") -> str:
