@@ -13,25 +13,61 @@
 # limitations under the License.
 # ==============================================================================
 """Unit test for the sse module."""
+import abc
+import typing
 import uuid
 import unittest
 import unittest.mock
 import requests
+import marshmallow
 
 from floq.client import api_client, schemas, sse
 
 
-class TestTaskStatusStreamHandler(unittest.TestCase):
-    """Tests TaskStatusStreamHandler class behavior."""
+class AbstractStreamTest(unittest.TestCase, abc.ABC):
+    """Base class for stream handler test."""
+
+    event_id = uuid.uuid4()
 
     @classmethod
     def setUpClass(cls) -> None:
         """See base class documentation."""
-        cls.mocked_client = unittest.mock.Mock(api_client.ApiClient)
+        cls.mocked_response = unittest.mock.Mock(requests.Response)
 
-    def setUp(self) -> None:
-        """See base class documentation."""
-        self.handler = sse.TaskStatusStreamHandler(self.mocked_client)
+        cls.mocked_ctx_manager = unittest.mock.Mock()
+        cls.mocked_ctx_manager.__enter__ = unittest.mock.Mock()
+        cls.mocked_ctx_manager.__enter__.return_value = cls.mocked_response
+        cls.mocked_ctx_manager.__exit__ = unittest.mock.Mock()
+
+        cls.mocked_client = unittest.mock.Mock(api_client.ApiClient)
+        cls.mocked_client.get.return_value = cls.mocked_ctx_manager
+
+        cls.mocked_listener = unittest.mock.Mock(sse.EventsListener)
+
+        cls.handler: sse.EventStreamHandler = None
+
+    @property
+    @abc.abstractmethod
+    def event(self) -> typing.Any:
+        """Server side event."""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def event_payload(self) -> typing.Any:
+        """Server side event payload."""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def event_schema(self) -> marshmallow.Schema:
+        """Server side event encoding/decoding schema."""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def url(self) -> str:
+        """Job result endpoint."""
 
     def tearDown(self) -> None:
         """See base class documentation."""
@@ -39,38 +75,149 @@ class TestTaskStatusStreamHandler(unittest.TestCase):
             if attr.startswith("mocked_"):
                 getattr(self, attr).reset_mock()
 
-    def test_open_stream(self) -> None:
-        """Tests open_stream method behavior."""
+    def _run_test(self) -> None:
+        """Runs test."""
         # Test setup
-        data = schemas.TaskStatus(schemas.TaskState.PENDING)
-        event = schemas.TaskStatusEvent(
-            data, schemas.TaskStatusEvent.__name__, uuid.uuid4()
-        )
-        serialized_event = schemas.encode(schemas.TaskStatusEventSchema, event)
-
-        mocked_response = unittest.mock.Mock(requests.Response)
-        mocked_response.iter_lines.return_value = [
+        serialized_event = schemas.encode(self.event_schema, self.event)
+        self.mocked_response.iter_lines.return_value = [
             x.encode() for x in serialized_event.split("\n")
         ]
-        mocked_listener = unittest.mock.Mock(sse.EventsListener)
-
-        mocked_ctx_manager = unittest.mock.Mock()
-        mocked_ctx_manager.__enter__ = unittest.mock.Mock()
-        mocked_ctx_manager.__enter__.return_value = mocked_response
-        mocked_ctx_manager.__exit__ = unittest.mock.Mock()
-
-        self.mocked_client.get.return_value = mocked_ctx_manager
-
-        data = schemas.TaskSubmitted(uuid.uuid4())
-        serialized_data = schemas.encode(schemas.TaskSubmittedSchema, data)
 
         # Run test
-        self.handler.listener = mocked_listener
-        self.handler.open_stream(serialized_data)
+        self.handler.open_stream(self.url, self.mocked_listener)
 
         # Verification
-        self.mocked_client.get.assert_called_once_with(
-            f"tasks/{str(data.id)}/stream", stream=True
+        self._verify_mocked_client()
+        self._verify_mocked_listener(self.event)
+        self._verify_mocked_response()
+
+    def _verify_mocked_client(self) -> None:
+        """Verifies calls to mocked_client mock."""
+        self.mocked_client.get.assert_called_once_with(self.url, stream=True)
+
+    def _verify_mocked_response(self) -> None:
+        """Verifies calls to mocked_response mock."""
+        self.mocked_response.iter_lines.assert_called_once_with()
+
+    def _verify_mocked_listener(self, event: schemas.ServerSideEvent) -> None:
+        """Verifies calls to mocked_listener mock."""
+        self.mocked_listener.assert_called_once_with(event, None)
+
+
+class AbstractJobStatusStreamTest(AbstractStreamTest):
+    """Base class for testing AbstractJobStatusStreamHandler class behavior."""
+
+    job_id = uuid.uuid4()
+
+
+class TestExpectationJobStatusStreamHandler(AbstractJobStatusStreamTest):
+    """Tests ExpectationJobStatusStreamHandler class behavior."""
+
+    @property
+    def event_payload(self) -> schemas.ExpectationJobResult:
+        """See base class documentation."""
+        return schemas.ExpectationJobResult(
+            id=self.job_id,
+            status=schemas.JobStatus.IN_PROGRESS,
+            progress=schemas.JobProgress(),
         )
-        mocked_response.iter_lines.assert_called_once_with()
-        mocked_listener.assert_called_once_with(event, None)
+
+    @property
+    def event(self) -> schemas.ExpectationJobStatusEvent:
+        """See base class documentation."""
+        return schemas.ExpectationJobStatusEvent(
+            data=self.event_payload, id=self.event_id
+        )
+
+    @property
+    def event_schema(self) -> marshmallow.Schema:
+        """See base class documentation."""
+        return schemas.ExpectationJobStatusEventSchema
+
+    @property
+    def url(self) -> str:
+        """See base class documentation."""
+        return f"jobs/exp/{str(self.job_id)}/results"
+
+    def setUp(self) -> None:
+        """See base class documentation."""
+        self.handler = sse.ExpectationJobStatusStreamHandler(self.mocked_client)
+
+    def test_open_stream(self) -> None:
+        """Tests open_stream method behavior."""
+        self._run_test()
+
+
+class TestSampleJobStatusStreamHandler(AbstractJobStatusStreamTest):
+    """Tests SampleJobStatusStreamHandler class behavior."""
+
+    @property
+    def event_payload(self) -> schemas.SampleJobResult:
+        """See base class documentation."""
+        return schemas.SampleJobResult(
+            id=self.job_id,
+            status=schemas.JobStatus.IN_PROGRESS,
+            progress=schemas.JobProgress(),
+        )
+
+    @property
+    def event(self) -> schemas.SampleJobStatusEvent:
+        """See base class documentation."""
+        return schemas.SampleJobStatusEvent(
+            data=self.event_payload, id=self.event_id, timestamp=1234567890
+        )
+
+    @property
+    def event_schema(self) -> marshmallow.Schema:
+        """See base class documentation."""
+        return schemas.SampleJobStatusEventSchema
+
+    @property
+    def url(self) -> str:
+        """See base class documentation."""
+        return f"jobs/sample/{str(self.job_id)}/results"
+
+    def setUp(self) -> None:
+        """See base class documentation."""
+        self.handler = sse.SampleJobStatusStreamHandler(self.mocked_client)
+
+    def test_open_stream(self) -> None:
+        """Tests open_stream method behavior."""
+        self._run_test()
+
+
+class TestTaskStatusStreamHandler(AbstractStreamTest):
+    """Tests TaskStatusStreamHandler class behavior."""
+
+    task_id = uuid.uuid4()
+
+    @property
+    def event_payload(self) -> schemas.SampleJobResult:
+        """See base class documentation."""
+        return schemas.TaskStatus(schemas.TaskState.PENDING)
+
+    @property
+    def event(self) -> schemas.SampleJobStatusEvent:
+        """See base class documentation."""
+        return schemas.TaskStatusEvent(
+            data=self.event_payload, id=self.event_id, timestamp=1234567890
+        )
+
+    @property
+    def event_schema(self) -> marshmallow.Schema:
+        """See base class documentation."""
+        return schemas.TaskStatusEventSchema
+
+    @property
+    def url(self) -> str:
+        """See base class documentation."""
+        return f"jobs/sample/{str(self.task_id)}/results"
+
+    def setUp(self) -> None:
+        """See base class documentation."""
+        self.handler = sse.TaskStatusStreamHandler(self.mocked_client)
+        self.handler.listener = self.mocked_listener
+
+    def test_open_stream(self) -> None:
+        """Tests open_stream method behavior."""
+        self._run_test()

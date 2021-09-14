@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+# pylint: disable=too-few-public-methods
 """This module provides classes for handling Floq API service events stream."""
-import abc
 from typing import Any, Callable, Optional, TypeVar
 import marshmallow
 import requests
@@ -25,16 +26,11 @@ TServerSideEvent = TypeVar("TServerSideEvent", bound=schemas.ServerSideEvent)
 
 
 # Function to be called on receiving a new ServerSideEvent
-EventsListener = Callable[
-    [TServerSideEvent, Optional[Any]],
-    None,
-]
+EventsListener = Callable[[TServerSideEvent, Optional[Any]], None]
 
 
-class AbstractEventStreamHandler(
-    abc.ABC
-):  # pylint: disable=too-few-public-methods
-    """Abstract class handling service streaming responses.
+class EventStreamHandler:
+    """Handles service streaming responses.
 
     Attributes:
         listener: Callback function to be invoked on receiving a new event.
@@ -44,21 +40,33 @@ class AbstractEventStreamHandler(
     def __init__(
         self, client: api_client.ApiClient, schema: marshmallow.Schema
     ) -> None:
-        """Creates AbstractEventStreamHandler class instance.
+        """Creates EventStreamHandler class instance.
 
         Args:
             client: Reference to ApiClient class object.
             schema: Schema to be used for decoding incoming event payload.
         """
         self.context: Optional[Any] = None
-        self.listener: Optional[EventsListener] = None
 
         self._client = client
+        self._listener: Optional[EventsListener] = None
         self._schema = schema
 
-    @abc.abstractmethod
-    def open_stream(self, *args, **kwargs) -> None:
-        """Opens a new stream and starts processing events."""
+    def open_stream(
+        self, url: str, listener: Optional[EventsListener] = None
+    ) -> None:
+        """Opens a new stream and starts processing events.
+
+        Args:
+            listener: Optional callback function called after receiving a new
+                event.
+        """
+        self._listener = listener
+        stream_done = False
+
+        while not stream_done:
+            with self._client.get(url, stream=True) as response:
+                stream_done = self._process_stream(response)
 
     def _process_stream(self, response: requests.Response) -> None:
         """Processes streaming response.
@@ -67,6 +75,7 @@ class AbstractEventStreamHandler(
             response: Reference to Response object.
         """
         buffer = []
+
         for line in response.iter_lines():
             if len(line) > 0:
                 buffer.append(line)
@@ -76,20 +85,51 @@ class AbstractEventStreamHandler(
                 continue
 
             event_raw = "\n".join(x.decode() for x in buffer)
-            event: schemas.ServerSideEvent = schemas.decode(
-                self._schema, event_raw
-            )
-            if self.listener and callable(self.listener):
-                self.listener(  # pylint: disable=not-callable
-                    event, self.context
+            try:
+                event: schemas.ServerSideEvent = schemas.decode(
+                    self._schema, event_raw
+                )
+            except marshmallow.exceptions.ValidationError:
+                event: schemas.StreamTimeoutEvent = schemas.decode(
+                    schemas.StreamTimeoutEventSchema, event_raw
                 )
 
             buffer.clear()
 
+            if isinstance(event, schemas.StreamTimeoutEvent):
+                return False
 
-class TaskStatusStreamHandler(
-    AbstractEventStreamHandler
-):  # pylint: disable=too-few-public-methods
+            if callable(self._listener):
+                self._listener(event, self.context)  # pylint: disable=not-callable
+
+        return True
+
+
+class ExpectationJobStatusStreamHandler(EventStreamHandler):
+    """Handles expectation job status event stream."""
+
+    def __init__(self, client: api_client.ApiClient) -> None:
+        """Creates ExpectationJobStatusStreamHandler class instance.
+
+        Args:
+            client: Reference to ApiClient class object.
+        """
+        super().__init__(client, schemas.ExpectationJobStatusEventSchema)
+
+
+class SampleJobStatusStreamHandler(EventStreamHandler):
+    """Handles sample job status event stream."""
+
+    def __init__(self, client: api_client.ApiClient) -> None:
+        """Creates SampleJobStatusStreamHandler class instance.
+
+        Args:
+            client: Reference to ApiClient class object.
+        """
+        super().__init__(client, schemas.SampleJobStatusEventSchema)
+
+
+class TaskStatusStreamHandler(EventStreamHandler):
     """Handles asynchronous task status event stream."""
 
     def __init__(self, client: api_client.ApiClient) -> None:
@@ -99,17 +139,3 @@ class TaskStatusStreamHandler(
             client: Reference to ApiClient class object.
         """
         super().__init__(client, schemas.TaskStatusEventSchema)
-
-    def open_stream(self, content: str) -> None:
-        """Opens a new stream and starts processing events.
-
-        Args:
-            content: JSON encoded TaskSubmitted object.
-        """
-        task: schemas.TaskSubmitted = schemas.decode(
-            schemas.TaskSubmittedSchema, content
-        )
-        with self._client.get(
-            f"tasks/{str(task.id)}/stream", stream=True
-        ) as response:
-            self._process_stream(response)

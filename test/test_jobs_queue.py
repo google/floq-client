@@ -28,7 +28,7 @@ class TestJobsQueueManager(unittest.TestCase):
     def setUpClass(cls) -> None:
         """See base class documentation."""
         cls.mocked_client = unittest.mock.Mock(api_client.ApiClient)
-        cls.mocked_handler = unittest.mock.Mock(sse.AbstractEventStreamHandler)
+        cls.mocked_handler = unittest.mock.Mock(sse.EventStreamHandler)
 
         cls.container = containers.Client()
         cls.container.core.ApiClient.override(cls.mocked_client)
@@ -65,7 +65,9 @@ class TestJobsQueueManager(unittest.TestCase):
 
         # Verification
         self.mocked_client.delete.assert_called_once_with("jobs/queue")
-        self.mocked_handler.open_stream.assert_called_once_with(serialized_task)
+        self.mocked_handler.open_stream.assert_called_once_with(
+            f"tasks/{str(task.id)}/stream", self.manager.on_jobs_queue_flushed
+        )
 
     def test_get(self) -> None:
         """Tests get method behavior."""

@@ -17,13 +17,14 @@ import unittest
 import unittest.mock
 import cirq
 
-from floq.client import containers, errors, schemas, simulators
+from floq.client import containers, schemas, simulators
 
 
-# TODO(b/191300572): Add the follow run method tests
+# TODO(jacksonwb): Add the follow run method tests
 # * None, Actual, Multi - param_resolvers values and throw handling
 # * run_sweep - values
-# TODO(b/191301119): Add the following expectation method tests
+
+# TODO(jacksonwb): Add the following expectation method tests
 # * None, Single, Multi Paulisums as observalbe argument
 # * simulate_expectation_values_sweep input parameters
 class TestCirqSimulator(unittest.TestCase):
@@ -97,28 +98,3 @@ class TestCirqSimulator(unittest.TestCase):
         self.mocked_simulator.run.assert_called_once_with(
             circuit, cirq.ParamResolver(None), observables
         )
-
-    def test_resume_polling(self) -> None:
-        """Tests resume_polling method behavior."""
-        # Test setup
-        self.mocked_simulator.can_resume_polling = True
-        self.mocked_simulator.resume_polling.return_value = None
-
-        # Run test
-        result = self.simulator.resume_polling()
-
-        # Verification
-        self.assertIsNone(result)
-        self.mocked_simulator.resume_polling.assert_called_once()
-
-    def test_resume_polling_no_previous_job(self) -> None:
-        """Tests resume_polling method behavior: current job is unset"""
-        # Test setup
-        self.mocked_simulator.can_resume_polling = False
-
-        # Run test
-        with self.assertRaises(errors.ResumePollingError):
-            self.simulator.resume_polling()
-
-        # Verification
-        self.mocked_simulator.resume_polling.assert_not_called()

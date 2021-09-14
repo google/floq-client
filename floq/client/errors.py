@@ -33,17 +33,7 @@ class SerializationError(FloqError):
 
     def __init__(self) -> None:
         """Creates SerializationError class instance."""
-        super().__init__(
-            """
-Cirq encountered a serialization error. This may be due to passing gates
-parameterized on more than one symbol, which Cirq currently does not support.
-Because Cirq rx, ry, and rz gates depend on an implicit internal symbol they can
-fail. This is actively being resolved!
-
-In the meantime try using XPow, YPow, ZPow gates instead:
-    cirq.rx(s) -> cirq.XPowGate(exponent=(s/np.pi), global_shift=-0.5)
-"""
-        )
+        super().__init__("Cirq encountered a serialization error.")
 
 
 class ServiceError(FloqError):
@@ -75,19 +65,3 @@ class SimulationError(FloqError):
                          f" {message}")
         self.job_id = job_id
         self.message = message
-
-
-class PollingTimeoutError(FloqError):
-    """Simulation job result polling timeout."""
-
-    def __init__(self, job_id: uuid.UUID) -> None:
-        """Creates PollingTimeoutError class instance.
-
-        Args:
-            job_id:
-        """
-        super().__init__(
-            f"Reached maximum timeout while polling job {str(job_id)} result."
-            " Call the resume_polling() method to resume polling."
-        )
-        self.job_id = job_id

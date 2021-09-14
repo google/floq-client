@@ -27,7 +27,7 @@ API_KEY = "api_key"
 def main() -> None:
     """Script entry point."""
 
-    client = floq.client.CirqSimulator(API_KEY)
+    client = floq.client.CirqClient(API_KEY)
     worker = client.managers.WorkerManager()
 
     # Start worker

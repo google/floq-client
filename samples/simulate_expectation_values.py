@@ -18,7 +18,6 @@ import floq.client
 
 API_KEY = "api_key"
 
-
 def main() -> None:
     """Script entry point."""
     qubits = cirq.LineQubit.range(26)

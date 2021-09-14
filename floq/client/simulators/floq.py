@@ -20,17 +20,18 @@ requests to the cloud service and polls for the job results.
 
 import abc
 import os
-import time
 import uuid
 from typing import Any, Dict, List, Optional, cast
 import cirq
 import marshmallow
 import numpy as np
 
-from .. import api_client, errors, schemas
+from .. import api_client, errors, schemas, sse
 
 
-class AbstractRemoteSimulator(abc.ABC):
+class AbstractRemoteSimulator(
+    abc.ABC
+):  # pylint: disable=too-few-public-methods
     """An abstract remote simulator.
 
     This class contains core logic for sending simulation job context to the
@@ -39,12 +40,10 @@ class AbstractRemoteSimulator(abc.ABC):
     Cirq specific simulator.
     """
 
-    _BACKOFF_SECONDS = [0, 1, 1, 2, 3, 5, 8, 13, 21]
-    _TIMEOUT = 300  # 5 minutes
-
     def __init__(
         self,
         client: api_client.ApiClient,
+        handler: sse.EventStreamHandler,
         endpoint: str,
         schema: marshmallow.Schema,
     ) -> None:
@@ -58,37 +57,11 @@ class AbstractRemoteSimulator(abc.ABC):
         """
         self._base_url = f"jobs/{endpoint}"
         self._client = client
+        self._handler = handler
         # Last submitted job id
         self._job_id: Optional[uuid.UUID] = None
+        self._job_result: Optional[Any] = None
         self._results_schema = schema
-
-    @property
-    def can_resume_polling(self) -> bool:
-        """Indicates if can resume polling job results."""
-        return self._job_id is not None
-
-    def resume_polling(self, timeout: int = _TIMEOUT) -> Any:
-        """Resumes job pooling.
-
-        If the previous polling attempt failed due to TimeoutError, calling this
-        function will result in resuming polling until job finished execution.
-
-        Args:
-            timeout: Maximum number of seconds to wait for simulation to
-            complete.
-
-        Returns:
-            Simulation job results or None if cannot resume polling.
-
-        Raises:
-            ResumePollingError if no job have been previously queried.
-            SimulationError if the job failed.
-            TimeoutError if the job has not finished within given time limit.
-        """
-        if not self.can_resume_polling:
-            return None
-
-        return self._poll_results(timeout)
 
     @abc.abstractmethod
     def run(self, *args, **kwargs) -> Any:
@@ -98,91 +71,78 @@ class AbstractRemoteSimulator(abc.ABC):
             Simulation result.
         """
 
-    def _poll_results(self, timeout: int = _TIMEOUT) -> Any:
-        """Polls simulation result.
+    def _on_job_result(
+        self,
+        event: schemas.JobStatusEvent,
+        _context: Optional[Any],
+    ) -> None:
+        """Callaback function triggered after receiving a job execution progress
+        event.
 
         Args:
-            timeout: Maximum number of seconds to wait for simulation to
-            complete.
-
-        Returns:
-            Simulation job result.
-
-        Raises:
-            SimulationError if the job failed.
-            TimeoutError if the job has not finished within given time limit.
+            event: Received event.
+            context: Optional user context data passed together with the
+            event.
         """
-        url = os.path.join(self._base_url, str(self._job_id), "results")
+        if event.data.status not in (
+            schemas.JobStatus.COMPLETE,
+            schemas.JobStatus.ERROR,
+        ):
+            return
 
-        generator = (x for x in self._BACKOFF_SECONDS)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            response = self._client.get(url)
-            result: schemas.JobResult = schemas.decode(
-                self._results_schema, response.text
+        if event.data.status == schemas.JobStatus.ERROR:
+            raise errors.SimulationError(
+                cast(uuid.UUID, self._job_id),
+                cast(str, event.data.error_message),
             )
 
-            if result.status in (
-                schemas.JobStatus.ERROR,
-                schemas.JobStatus.COMPLETE,
-            ):
-                self._job_id = None
+        if event.data.status == schemas.JobStatus.COMPLETE:
+            self._job_result = event.data.result
 
-            if result.status == schemas.JobStatus.ERROR:
-                raise errors.SimulationError(
-                    cast(uuid.UUID, self._job_id),
-                    cast(str, result.error_message),
-                )
-
-            if result.status == schemas.JobStatus.COMPLETE:
-                return result.result
-
-            backoff_time = next(generator, self._BACKOFF_SECONDS[-1])
-            time.sleep(backoff_time)
-
-        raise errors.PollingTimeoutError(cast(uuid.UUID, self._job_id))
-
-    def _submit_job(self, context: str) -> uuid.UUID:
-        """Submits job to the service.
+    def _submit_job(self, context: str) -> Any:
+        """Submits job to the service and opens job status event stream.
 
         Args:
             context: Simulation job context.
 
         Returns:
-            Unique job id.
+            Simulation job result.
         """
         url = os.path.join(self._base_url, "submit")
         response = self._client.post(url, context)
         data: schemas.JobSubmitted = schemas.decode(
             schemas.JobSubmittedSchema, response.text
         )
-        return data.id
 
-    def _submit_and_poll(self, context: str) -> Any:
-        """Submits job to the service and polls for the results.
+        self._job_result = None
+        url = os.path.join(self._base_url, str(data.id), "stream")
+        self._handler.open_stream(url, self._on_job_result)
 
-        Args:
-            context: Simulation job context.
-
-        Returns:
-            Simulation job result.
-        """
-        self._job_id = self._submit_job(context)
-        return self._poll_results()
+        return self._job_result
 
 
-class SamplesSimulator(AbstractRemoteSimulator):
+class SamplesSimulator(
+    AbstractRemoteSimulator
+):  # pylint: disable=too-few-public-methods
     """Samples remote simulator."""
 
-    def __init__(self, client: api_client.ApiClient) -> None:
+    def __init__(
+        self,
+        client: api_client.ApiClient,
+        handler: sse.SampleJobStatusStreamHandler,
+    ) -> None:
         """Creates SamplesSimulator class instance.
 
         Args:
             client: Reference to ApiClient object.
+            handler: Reference to SampleJobStatusStreamHandler object.
         """
-        super().__init__(client, "sample", schemas.SampleJobResultSchema)
+        super().__init__(
+            client, handler, "sample", schemas.SampleJobResultSchema
+        )
 
-    def run(
+    # pylint: disable=arguments-differ
+    def run(  # type: ignore
         self,
         circuit: cirq.circuits.Circuit,
         param_resolver: cirq.study.ParamResolver,
@@ -216,22 +176,32 @@ class SamplesSimulator(AbstractRemoteSimulator):
         except Exception as ex:
             raise errors.SerializationError from ex
 
-        results: cirq.study.TrialResult = self._submit_and_poll(serialized_data)
-        return results._measurements
+        results: cirq.study.TrialResult = self._submit_job(serialized_data)
+        return results._measurements  # pylint: disable=protected-access
 
 
-class ExpectationValuesSimulator(AbstractRemoteSimulator):
+class ExpectationValuesSimulator(
+    AbstractRemoteSimulator
+):  # pylint: disable=too-few-public-methods
     """Expectations values remote simulator."""
 
-    def __init__(self, client: api_client.ApiClient) -> None:
+    def __init__(
+        self,
+        client: api_client.ApiClient,
+        handler: sse.ExpectationJobStatusStreamHandler,
+    ) -> None:
         """Creates ExpectationValuesSimulator class instance.
 
         Args:
             client: Reference to ApiClient object.
+            handler: Reference to ExpectationJobStatusStreamHandler object.
         """
-        super().__init__(client, "exp", schemas.ExpectationJobResultSchema)
+        super().__init__(
+            client, handler, "exp", schemas.ExpectationJobResultSchema
+        )
 
-    def run(
+    # pylint: disable=arguments-differ
+    def run(  # type: ignore
         self,
         circuit: cirq.circuits.Circuit,
         param_resolver: cirq.study.ParamResolver,
@@ -261,4 +231,4 @@ class ExpectationValuesSimulator(AbstractRemoteSimulator):
         except Exception as ex:
             raise errors.SerializationError from ex
 
-        return self._submit_and_poll(serialized_data)
+        return self._submit_job(serialized_data)

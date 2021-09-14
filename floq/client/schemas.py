@@ -21,7 +21,7 @@ import dataclasses
 import enum
 import json
 import time
-import typing
+from typing import Any, Dict, List, Optional, Union
 import cirq
 import marshmallow
 import marshmallow_dataclass
@@ -64,15 +64,15 @@ def encode(schema: marshmallow.Schema, data: dataclasses.dataclass, **kwargs) ->
 #####################################
 
 
-OperatorsType = typing.Union[cirq.ops.PauliSum, typing.List[cirq.ops.PauliSum]]
+OperatorsType = Union[cirq.ops.PauliSum, List[cirq.ops.PauliSum]]
 
 
 #####################################
 # marshmallow helpers               #
 #####################################
 
-_SerializedCirqObject = typing.Dict[str, typing.Any]
-_SerializedPauliSums = typing.List[typing.List[typing.Dict[str, typing.Any]]]
+_SerializedCirqObject = Dict[str, Any]
+_SerializedPauliSums = List[List[Dict[str, Any]]]
 
 # `cirq` offers only functions to dump and load objects from the JSON encoded
 # string, and does not support builtin dict objects. When we call json.dumps()
@@ -80,7 +80,7 @@ _SerializedPauliSums = typing.List[typing.List[typing.Dict[str, typing.Any]]]
 # prefixed with the backslash.
 
 
-def _deserialize_cirq_object(data: _SerializedCirqObject) -> typing.Any:
+def _deserialize_cirq_object(data: _SerializedCirqObject) -> Any:
     """Deserializes cirq object from dict type.
 
     Since `cirq` does not provide function to load objects from builtin dict
@@ -96,7 +96,7 @@ def _deserialize_cirq_object(data: _SerializedCirqObject) -> typing.Any:
     return cirq.read_json(json_text=json.dumps(data))
 
 
-def _serialize_cirq_object(obj: typing.Any) -> _SerializedCirqObject:
+def _serialize_cirq_object(obj: Any) -> _SerializedCirqObject:
     """Serializes cirq object to dict type.
 
     Since `cirq` does not provide function to dump objects into builtin dict
@@ -115,13 +115,13 @@ def _serialize_cirq_object(obj: typing.Any) -> _SerializedCirqObject:
 class _CirqField(marshmallow.fields.Field):
     """Field that serializes and deserializes cirq object."""
 
-    def _serialize(self, value: typing.Any, *_args, **_kwargs) -> _SerializedCirqObject:
+    def _serialize(self, value: Any, *_args, **_kwargs) -> _SerializedCirqObject:
         """See base class documentation."""
         return _serialize_cirq_object(value)
 
     def _deserialize(
         self, value: _SerializedCirqObject, *_args, **_kwargs
-    ) -> typing.Any:
+    ) -> Any:
         """See base class documentation."""
         try:
             return _deserialize_cirq_object(value)
@@ -189,6 +189,19 @@ class APIError:
 #####################################
 
 
+@dataclasses.dataclass
+class _JobContext:
+    """Submit job request data.
+
+    Properties:
+        circuit: Circuit to be run.
+        param_resolver: ParamResolver to be used with the circuit.
+    """
+
+    circuit: Circuit
+    param_resolver: ParamResolver
+
+
 class JobStatus(enum.IntEnum):
     """Current job status."""
 
@@ -213,7 +226,7 @@ class JobsQueue:
         ids: List of pending jobs ids.
     """
 
-    ids: typing.List[UUID] = dataclasses.field(default_factory=[])
+    ids: List[UUID] = dataclasses.field(default_factory=[])
 
 
 @dataclasses.dataclass
@@ -238,8 +251,7 @@ class PendingJob:
     type: JobType = dataclasses.field(
         metadata={
             "marshmallow_field": marshmallow_enum.EnumField(
-                JobType,
-                by_value=True,
+                JobType, by_value=True
             )
         }
     )
@@ -248,6 +260,34 @@ class PendingJob:
         """See base class documentation."""
         if self.status in (JobStatus.COMPLETE, JobStatus.ERROR):
             raise ValueError(f"PendingJob cannot have {self.status.name} status")
+
+
+@dataclasses.dataclass
+class JobProgress:
+    """Job computation progress.
+
+    Properties:
+        current: Number of completed work units.
+        total: Total number of work units.
+    """
+
+    completed: int = dataclasses.field(default=0)
+    total: int = dataclasses.field(default=1)
+
+    def __post_init__(self) -> None:
+        """See base class documentation."""
+        if self.completed < 0:
+            raise ValueError("Current work unit cannot be less than zero")
+
+        if self.total < 1:
+            raise ValueError(
+                "Total number of work units cannot be less than 1"
+            )
+
+        if self.completed > self.total:
+            raise ValueError(
+                "Current work unit cannot be greater than total work units"
+            )
 
 
 @dataclasses.dataclass
@@ -264,16 +304,19 @@ class JobResult:
     status: JobStatus = dataclasses.field(
         metadata={
             "marshmallow_field": marshmallow_enum.EnumField(
-                JobStatus,
-                by_value=True,
+                JobStatus, by_value=True
             )
         }
     )
-    error_message: typing.Optional[str] = dataclasses.field(default=None)
-    result: typing.Optional[typing.Any] = dataclasses.field(default=None)
+    error_message: Optional[str] = dataclasses.field(default=None)
+    progress: Optional[JobProgress] = dataclasses.field(default=None)
+    result: Optional[Any] = dataclasses.field(default=None)
 
     def __post_init__(self) -> None:
         """See base class documentation."""
+        if self.status == JobStatus.IN_PROGRESS and self.progress is None:
+            raise ValueError("Missing job progress")
+
         if self.status == JobStatus.ERROR:
             if not self.error_message:
                 raise ValueError("Missing error messsage")
@@ -299,20 +342,7 @@ class JobSubmitted:
 
 
 @dataclasses.dataclass
-class SubmitJobContext:
-    """Submit job request data.
-
-    Properties:
-        circuit: Circuit to be run.
-        param_resolver: ParamResolver to be used with the circuit.
-    """
-
-    circuit: Circuit
-    param_resolver: ParamResolver
-
-
-@dataclasses.dataclass
-class ExpectationJobContext(SubmitJobContext):
+class ExpectationJobContext(_JobContext):
     """Submit expectation job request data.
 
     Properties:
@@ -334,11 +364,11 @@ class ExpectationJobResult(JobResult):
         status: Current job status.
     """
 
-    result: typing.Optional[typing.List[float]] = dataclasses.field(default=None)
+    result: Optional[List[float]] = dataclasses.field(default=None)
 
 
 @dataclasses.dataclass
-class SampleJobContext(SubmitJobContext):
+class SampleJobContext(_JobContext):
     """Submit sample job request data.
 
     Properties:
@@ -360,7 +390,7 @@ class SampleJobResult(JobResult):
         status: Current job status.
     """
 
-    result: typing.Optional[Result] = dataclasses.field(default=None)
+    result: Optional[Result] = dataclasses.field(default=None)
 
 
 #####################################
@@ -382,11 +412,13 @@ class TaskStatus:
 
     state: TaskState = dataclasses.field(
         metadata={
-            "marshmallow_field": marshmallow_enum.EnumField(TaskState, by_value=True)
+            "marshmallow_field": marshmallow_enum.EnumField(
+                TaskState, by_value=True
+            )
         }
     )
-    error: typing.Optional[str] = dataclasses.field(default=None)
-    success: typing.Optional[bool] = dataclasses.field(default=None)
+    error: Optional[str] = dataclasses.field(default=None)
+    success: Optional[bool] = dataclasses.field(default=None)
 
     def __post_init__(self) -> None:
         """See base class documentation."""
@@ -436,11 +468,13 @@ class Worker:
 
     state: WorkerState = dataclasses.field(
         metadata={
-            "marshmallow_field": marshmallow_enum.EnumField(WorkerState, by_value=True)
+            "marshmallow_field": marshmallow_enum.EnumField(
+                WorkerState, by_value=True
+            )
         }
     )
-    error: typing.Optional[str] = dataclasses.field(default=None)
-    job_id: typing.Optional[UUID] = dataclasses.field(default=None)
+    error: Optional[str] = dataclasses.field(default=None)
+    job_id: Optional[UUID] = dataclasses.field(default=None)
 
     def __post_init__(self) -> None:
         """See base class documentation."""
@@ -480,10 +514,73 @@ class ServerSideEvent:
         timestamp: Event timestamp in UNIX seconds.
     """
 
-    data: typing.Any
-    event: str
     id: UUID  # pylint: disable=invalid-name
-    timestamp: int = dataclasses.field(default=int(time.time()))
+    data: Any
+    event: str = dataclasses.field(default="")
+    timestamp: int = dataclasses.field(default=0)
+
+    def __post_init__(self) -> None:
+        """See base class documentation."""
+        if self.event == "":
+            self.event = self.__class__.__name__
+
+        if self.timestamp == 0:
+            self.timestamp = int(time.time())
+
+
+@dataclasses.dataclass
+class StreamTimeoutEvent(ServerSideEvent):
+    """Server side event that indicates the stream connection reached the
+    maximum timeout (10 minutes).
+
+    Properties:
+        event: Event name.
+        id: Event unique id.
+        timestamp: Event timestamp in UNIX seconds.
+    """
+
+    data: Optional[Any] = dataclasses.field(default=None)
+
+
+@dataclasses.dataclass
+class JobStatusEvent(ServerSideEvent):
+    """Job status changed event.
+
+    Properties:
+        data: Job status.
+        event: Event name.
+        id: Task unique id.
+        timestamp: Event timestamp in UNIX seconds.
+    """
+
+    data: JobResult
+
+
+@dataclasses.dataclass
+class ExpectationJobStatusEvent(JobStatusEvent):
+    """Expectation job status changed event.
+
+    Properties:
+        data: Job status.
+        event: Event name.
+        id: Task unique id.
+        timestamp: Event timestamp in UNIX seconds.
+    """
+
+    data: ExpectationJobResult
+
+@dataclasses.dataclass
+class SampleJobStatusEvent(JobStatusEvent):
+    """Sample job status changed event.
+
+    Properties:
+        data: Job status.
+        event: Event name.
+        id: Task unique id.
+        timestamp: Event timestamp in UNIX seconds.
+    """
+
+    data: SampleJobResult
 
 
 @dataclasses.dataclass
@@ -494,6 +591,7 @@ class TaskStatusEvent(ServerSideEvent):
         data: Task status.
         event: Event name.
         id: Task unique id.
+        timestamp: Event timestamp in UNIX seconds.
     """
 
     data: TaskStatus
@@ -509,8 +607,8 @@ class BaseSchema(marshmallow.Schema):
 
     @marshmallow.post_dump
     def remove_empty_fields(  # pylint: disable=no-self-use
-        self, data: typing.Dict, **_kwargs
-    ) -> typing.Dict:
+        self, data: Dict, **_kwargs
+    ) -> Dict:
         """Removes all None fields from the input data.
 
         Args:
@@ -528,7 +626,7 @@ class SSERenderer:
     events format."""
 
     @staticmethod
-    def dumps(obj: typing.Dict[str, typing.Any], *_args, **_kwargs) -> str:
+    def dumps(obj: Dict[str, Any], *_args, **_kwargs) -> str:
         """Encodes input object into text string.
 
         Args:
@@ -555,7 +653,7 @@ class SSERenderer:
     @staticmethod
     def loads(  # pylint: disable=invalid-name
         s: str, *_args, **_kwargs
-    ) -> typing.Dict[str, typing.Any]:
+    ) -> Dict[str, Any]:
         """Decodes input text string into dict object.
 
         Args:
@@ -592,16 +690,20 @@ class SSEBaseSchema(BaseSchema):
     APIErrorSchema,
     ExpectationJobContextSchema,
     ExpectationJobResultSchema,
+    ExpectationJobStatusEventSchema,
+    JobProgressSchema,
     JobResultSchema,
+    JobStatusEventSchema,
     JobSubmittedSchema,
     JobsQueueSchema,
     PendingJobSchema,
     SampleJobContextSchema,
     SampleJobResultSchema,
+    SampleJobStatusEventSchema,
     ServerSideEventSchema,
-    SubmitJobContextSchema,
-    TaskStatusSchema,
+    StreamTimeoutEventSchema,
     TaskStatusEventSchema,
+    TaskStatusSchema,
     TaskSubmittedSchema,
     WorkerSchema,
 ) = tuple(
@@ -610,16 +712,20 @@ class SSEBaseSchema(BaseSchema):
         (APIError, None),
         (ExpectationJobContext, None),
         (ExpectationJobResult, BaseSchema),
+        (ExpectationJobStatusEvent, SSEBaseSchema),
+        (JobProgress, None),
         (JobResult, BaseSchema),
+        (JobStatusEvent, SSEBaseSchema),
         (JobSubmitted, None),
         (JobsQueue, None),
         (PendingJob, None),
         (SampleJobContext, None),
         (SampleJobResult, BaseSchema),
+        (SampleJobStatusEvent, SSEBaseSchema),
         (ServerSideEvent, SSEBaseSchema),
-        (SubmitJobContext, None),
-        (TaskStatus, BaseSchema),
+        (StreamTimeoutEvent, SSEBaseSchema),
         (TaskStatusEvent, SSEBaseSchema),
+        (TaskStatus, BaseSchema),
         (TaskSubmitted, None),
         (Worker, BaseSchema),
     )

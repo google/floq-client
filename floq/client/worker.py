@@ -47,17 +47,16 @@ class WorkerManager:
     def __init__(
         self,
         client: api_client.ApiClient,
-        handler: sse.TaskStatusStreamHandler,
+        handler: sse.EventStreamHandler,
     ) -> None:
         """Creates WorkerManager class instance.
 
         Args:
             client: Reference to ApiClient object.
-            handler: Reference to AbstractEventStreamHandler type object.
+            handler: Reference to EventStreamHandler type object.
         """
         self._client = client
         self._handler = handler
-        self._handler.listener = self.on_worker_command_event
 
     def on_worker_command_event(  # pylint: disable=no-self-use
         self, event: schemas.TaskStatusEvent, context: Optional[Command]
@@ -180,8 +179,14 @@ class WorkerManager:
 
         def run() -> None:
             response = self._client.post(f"worker/{command.name.lower()}")
+
+            task: schemas.TaskSubmitted = schemas.decode(
+                schemas.TaskSubmittedSchema, response.text
+            )
+            url = f"tasks/{str(task.id)}/stream"
+
             self._handler.context = command
-            self._handler.open_stream(response.text)
+            self._handler.open_stream(url, self.on_worker_command_event)
 
         thread = None
         if async_request:

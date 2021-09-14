@@ -28,7 +28,7 @@ class TestWorkerManager(unittest.TestCase):
     def setUpClass(cls) -> None:
         """See base class documentation."""
         cls.mocked_client = unittest.mock.Mock(api_client.ApiClient)
-        cls.mocked_handler = unittest.mock.Mock(sse.AbstractEventStreamHandler)
+        cls.mocked_handler = unittest.mock.Mock(sse.EventStreamHandler)
 
         cls.container = containers.Client()
         cls.container.core.ApiClient.override(cls.mocked_client)
@@ -94,4 +94,6 @@ class TestWorkerManager(unittest.TestCase):
 
         # Verification
         self.mocked_client.post.assert_called_once_with(f"worker/{command}")
-        self.mocked_handler.open_stream.assert_called_once_with(serialized_task)
+        self.mocked_handler.open_stream.assert_called_once_with(
+            f"tasks/{str(task.id)}/stream", self.manager.on_worker_command_event
+        )

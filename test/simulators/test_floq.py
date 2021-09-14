@@ -13,16 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Unit test for the floq module."""
-import importlib
-import time
-from typing import List
 import uuid
 import unittest
 import unittest.mock
 import cirq
 import requests
 
-from floq.client import api_client, containers, errors, schemas, simulators
+from floq.client import api_client, containers, errors, schemas
 
 
 class TestRemoteSimulator(unittest.TestCase):
@@ -33,22 +30,12 @@ class TestRemoteSimulator(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         """See base class documentation."""
-        cls.patchers: List[unittest.mock._patch] = []
-
-        cls.mocked_time = unittest.mock.Mock(time.time)
-        patcher = unittest.mock.patch("time.time", cls.mocked_time)
-        cls.patchers.append(patcher)
-
-        cls.mocked_sleep = unittest.mock.Mock(time.sleep)
-        patcher = unittest.mock.patch("time.sleep", cls.mocked_sleep)
-        cls.patchers.append(patcher)
-
-        for patch in cls.patchers:
-            patch.start()
-
-        importlib.reload(containers)
+        cls.mocked_ctx_manager = unittest.mock.Mock()
+        cls.mocked_ctx_manager.__enter__ = unittest.mock.Mock()
+        cls.mocked_ctx_manager.__exit__ = unittest.mock.Mock()
 
         cls.mocked_client = unittest.mock.Mock(api_client.ApiClient)
+        cls.mocked_client.get.return_value = cls.mocked_ctx_manager
 
         cls.container: containers.Client = containers.Client()
         cls.container.core.ApiClient.override(cls.mocked_client)
@@ -56,9 +43,6 @@ class TestRemoteSimulator(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         """See base class documentation."""
-        for patcher in cls.patchers:
-            patcher.stop()
-
         cls.container.shutdown_resources()
 
     def setUp(self) -> None:
@@ -79,7 +63,7 @@ class TestRemoteSimulator(unittest.TestCase):
     def _verify_mocked_client_get_request(self, endpoint: str) -> None:
         """Verifies calls to the mocked_api.get mock"""
         self.mocked_client.get.assert_called_once_with(
-            f"jobs/{endpoint}/{str(self.JOB_ID)}/results"
+            f"jobs/{endpoint}/{str(self.JOB_ID)}/stream", stream=True
         )
 
     def _verify_mocked_client_post_request(
@@ -99,14 +83,10 @@ class TestSamplesSimulator(TestRemoteSimulator):
     def setUp(self) -> None:
         """See base class documentation."""
         super().setUp()
+
         self.simulator = self.container.simulators.remote_simulators()[
             schemas.JobType.SAMPLE
         ]
-
-    def tearDown(self) -> None:
-        """See base class documentation."""
-        super().tearDown()
-        self.mocked_time.side_effect = None
 
     def test_sample_basic(self) -> None:
         """Tests run method behavior."""
@@ -123,19 +103,24 @@ class TestSamplesSimulator(TestRemoteSimulator):
             status=schemas.JobStatus.COMPLETE,
             result=expected_result,
         )
-        mocked_get_response = unittest.mock.Mock(requests.Response)
-        mocked_get_response.text = schemas.encode(
-            schemas.SampleJobResultSchema, job_result
+        event = schemas.SampleJobStatusEvent(
+            data=job_result, id=uuid.uuid4()
         )
-        self.mocked_client.get.return_value = mocked_get_response
+        serialized_event = schemas.encode(
+            schemas.SampleJobStatusEventSchema, event
+        )
 
-        self.mocked_time.return_value = 1
+        mocked_get_response = unittest.mock.Mock(requests.Response)
+        mocked_get_response.iter_lines.return_value = [
+            x.encode() for x in serialized_event.split("\n")
+        ]
+        self.mocked_ctx_manager.__enter__.return_value = mocked_get_response
 
         # Run test
         actual_result = self.simulator.run(circuit, cirq.ParamResolver(None), 1)
 
         # Verification
-        self.assertEqual(actual_result, expected_result._measurements)
+        self.assertEqual(actual_result, expected_result._measurements)  # pylint: disable=protected-access
 
         context = schemas.SampleJobContext(circuit, cirq.ParamResolver(None), 1)
         serialized_context = schemas.encode(
@@ -144,9 +129,6 @@ class TestSamplesSimulator(TestRemoteSimulator):
         )
         self._verify_mocked_client_post_request("sample", serialized_context)
         self._verify_mocked_client_get_request("sample")
-
-        self.assertEqual(self.mocked_time.call_count, 2)
-        self.mocked_sleep.assert_not_called()
 
     def test_simulation_error(self) -> None:
         """Tests run method behavior: job failed."""
@@ -159,13 +141,23 @@ class TestSamplesSimulator(TestRemoteSimulator):
             id=self.JOB_ID,
             status=schemas.JobStatus.ERROR,
         )
-        mocked_get_response = unittest.mock.Mock(requests.Response)
-        mocked_get_response.text = schemas.encode(
-            schemas.SampleJobResultSchema, job_result
+        event = schemas.SampleJobStatusEvent(
+            data=job_result, id=uuid.uuid4()
         )
-        self.mocked_client.get.return_value = mocked_get_response
+        serialized_event = schemas.encode(
+            schemas.SampleJobStatusEventSchema, event
+        )
 
-        self.mocked_time.return_value = 1
+        mocked_get_response = unittest.mock.Mock(requests.Response)
+        mocked_get_response.iter_lines.return_value = [
+            x.encode() for x in serialized_event.split("\n")
+        ]
+        self.mocked_ctx_manager.__enter__.return_value = mocked_get_response
+
+        def exit_side_effect(_, exc_value, __) -> None:
+            raise exc_value
+
+        self.mocked_ctx_manager.__exit__.side_effect = exit_side_effect
 
         # Run test
         with self.assertRaises(errors.SimulationError):
@@ -182,60 +174,6 @@ class TestSamplesSimulator(TestRemoteSimulator):
         )
         self._verify_mocked_client_post_request("sample", serialized_context)
         self._verify_mocked_client_get_request("sample")
-
-        self.assertEqual(self.mocked_time.call_count, 2)
-        self.mocked_sleep.assert_not_called()
-
-    def test_polling_timeout_error(self) -> None:
-        """Tests run method behavior: polling timed out."""
-        # Test setup
-        qubits = cirq.LineQubit.range(1)
-        circuit = cirq.Circuit([cirq.X(qubits[0]), cirq.measure(qubits[0])])
-
-        job_result = schemas.SampleJobResult(
-            id=self.JOB_ID, status=schemas.JobStatus.IN_PROGRESS
-        )
-        mocked_get_response = unittest.mock.Mock(requests.Response)
-        mocked_get_response.text = schemas.encode(
-            schemas.SampleJobResultSchema, job_result
-        )
-        self.mocked_client.get.return_value = mocked_get_response
-
-        max_size = (
-            len(simulators.floq.AbstractRemoteSimulator._BACKOFF_SECONDS) + 1
-        )
-        side_effects = [0] + list(range(1, max_size)) + [300]
-        self.mocked_time.side_effect = side_effects
-
-        # Run test
-        with self.assertRaises(errors.PollingTimeoutError):
-            self.simulator.run(circuit, cirq.ParamResolver(None), 1)
-
-        # Verification
-        context = schemas.SampleJobContext(
-            circuit,
-            cirq.ParamResolver(None),
-        )
-        serialized_context = schemas.encode(
-            schemas.SampleJobContextSchema,
-            context,
-        )
-        self._verify_mocked_client_post_request("sample", serialized_context)
-        call_args_list = [
-            ((f"jobs/sample/{str(self.JOB_ID)}/results",),)
-            for _ in range(
-                len(simulators.floq.AbstractRemoteSimulator._BACKOFF_SECONDS)
-            )
-        ]
-        self.assertEqual(self.mocked_client.get.call_args_list, call_args_list)
-
-        self.assertEqual(self.mocked_time.call_count, len(side_effects))
-
-        call_args_list = [
-            ((x,),)
-            for x in simulators.floq.AbstractRemoteSimulator._BACKOFF_SECONDS
-        ]
-        self.assertEqual(self.mocked_sleep.call_args_list, call_args_list)
 
     def test_serialization_error(self) -> None:
         """Tests serialization error."""
@@ -267,13 +205,18 @@ class TestExpectationValuesSimulator(TestRemoteSimulator):
             status=schemas.JobStatus.COMPLETE,
             result=expected_result,
         )
-        mocked_get_response = unittest.mock.Mock(requests.Response)
-        mocked_get_response.text = schemas.encode(
-            schemas.ExpectationJobResultSchema, job_result
+        event = schemas.ExpectationJobStatusEvent(
+            data=job_result, id=uuid.uuid4()
         )
-        self.mocked_client.get.return_value = mocked_get_response
+        serialized_event = schemas.encode(
+            schemas.ExpectationJobStatusEventSchema, event
+        )
 
-        self.mocked_time.return_value = 1
+        mocked_get_response = unittest.mock.Mock(requests.Response)
+        mocked_get_response.iter_lines.return_value = [
+            x.encode() for x in serialized_event.split("\n")
+        ]
+        self.mocked_ctx_manager.__enter__.return_value = mocked_get_response
 
         # Run test
         actual_result = self.simulator.run(
@@ -296,9 +239,6 @@ class TestExpectationValuesSimulator(TestRemoteSimulator):
         )
         self._verify_mocked_client_post_request("exp", serialized_context)
         self._verify_mocked_client_get_request("exp")
-
-        self.assertEqual(self.mocked_time.call_count, 2)
-        self.mocked_sleep.assert_not_called()
 
     def test_serialization_error(self) -> None:
         """Tests serialization error."""
