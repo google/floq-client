@@ -26,10 +26,10 @@ class JobsQueueManager:
 
     The Floq service does not handle the flush queue request immediately, but
     schedules it for execution and starts emitting events along with run
-    progress. Thus, when calling the flush method the JobsQueueManager sends the
-    request to the service and opens an event stream connection. Every time a
-    new message is received, the on_jobs_queue_flushed callback method is called
-    and prints an output message once the execution is done.
+    progress. Thus, when calling the flush method the manager sends the
+    request to the service and opens an event stream connection. Every time
+    a new message is received, the :meth:`on_jobs_queue_flushed` callback method
+    is called and prints an output message once the execution is done.
     """
 
     def __init__(
@@ -65,7 +65,7 @@ class JobsQueueManager:
         """Gets jobs queue.
 
         Returns:
-            JobQueue object.
+            `JobsQueue` object.
         """
         response = self._client.get("jobs/queue")
         return schemas.decode(schemas.JobsQueueSchema, response.text)
@@ -74,10 +74,10 @@ class JobsQueueManager:
         """Gets pending job details.
 
         Args:
-            job_id: Job id.
+            job_id: Unique job id.
 
         Returns:
-            PendingJob object.
+            `PendingJob` object.
         """
         response = self._client.get(f"jobs/queue/{str(job_id)}")
         return schemas.decode(schemas.PendingJobSchema, response.text)
@@ -91,7 +91,7 @@ class JobsQueueManager:
         Args:
             event: Received event.
             context: Optional user context data passed together with the
-            event.
+                event.
         """
         if event.data.state != schemas.TaskState.DONE:
             return

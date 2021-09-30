@@ -25,24 +25,25 @@ class WorkerManager:
 
     The Floq service does not handle worker commands immediately, but schedules
     the request for execution and starts emitting events along with run
-    progress. Thus, when calling start, stop or restart method the WorkerManager
+    progress. Thus, when calling start, stop or restart method the manager
     sends the request to the Floq service and opens an event stream connection.
-    Every time a new message is received, the on_worker_command_event callback
-    method is called and prints an output message once the execution is done.
+    Every time a new message is received, the :meth:`on_worker_command_event`
+    callback method is called and prints an output message once the execution is
+    done.
 
-    All TPU worker commands (start, stop, restart) are executed synchronously by
-    default. It means the further code execution will be blocked until the Floq
-    service sends TaskState.DONE event. Optionally the request can be executed
-    asynchronously (in a separate thread) by passing async_request=True
-    argument to the corresponding methods.
+    All TPU worker commands are executed synchronously by default. It means the
+    further code execution will be blocked until the Floq service sends an event
+    with :attr:`floq.client.schemas.TaskState.DONE` status. Optionally the
+    request can be executed asynchronously (in a separate thread) by passing
+    `async_request=True` argument to the corresponding methods.
     """
 
     class Command(enum.IntEnum):
-        """Supported TPU workers commands."""
+        """TPU worker command."""
 
-        RESTART = enum.auto()
-        START = enum.auto()
-        STOP = enum.auto()
+        RESTART = enum.auto()  #: Restarts TPU worker
+        START = enum.auto()  #: Starts TPU worker
+        STOP = enum.auto()  #: Stops TPU worker
 
     def __init__(
         self,
@@ -67,7 +68,7 @@ class WorkerManager:
         Args:
             event: Received event.
             context: Optional user context data passed together with the
-            event.
+                event.
         """
         if context is None:
             raise RuntimeError("Missing worker command context")
@@ -101,15 +102,15 @@ class WorkerManager:
 
         This method makes synchronous request to the Floq API service, thus it
         will block code execution until the TPU worker is up and running. To
-        make it asynchronous, pass async_request=True.
+        make it asynchronous, pass `async_request=True`.
 
         Args:
             async_request: Indicates if the request should be executed
                 asynchronously.
 
         Returns:
-            Thread object handle if the async_request flag is True, None
-            otherwise.
+            `threading.Thread` object handle if the `async_request` argument
+            True, `None` otherwise.
         """
         return self._send_worker_command(
             WorkerManager.Command.RESTART, async_request
@@ -127,8 +128,8 @@ class WorkerManager:
                 asynchronously.
 
         Returns:
-            Thread object handle if the async_request flag is True, None
-            otherwise.
+            `threading.Thread` object handle if the `async_request` argument
+            True, `None` otherwise.
         """
         return self._send_worker_command(
             WorkerManager.Command.START, async_request
@@ -138,7 +139,7 @@ class WorkerManager:
         """Gets current worker status.
 
         Returns:
-            Worker object.
+            `Worker` object.
         """
         response = self._client.get("worker/status")
         return schemas.decode(schemas.WorkerSchema, response.text)
@@ -155,8 +156,8 @@ class WorkerManager:
                 asynchronously.
 
         Returns:
-            Thread object handle if the async_request flag is True, None
-            otherwise.
+            `threading.Thread` object handle if the `async_request` argument
+            True, `None` otherwise.
         """
         return self._send_worker_command(
             WorkerManager.Command.STOP, async_request
@@ -173,8 +174,8 @@ class WorkerManager:
                 asynchronously.
 
         Returns:
-            Thread object handle if the async_request flag is True, None
-            otherwise.
+            `threading.Thread` object handle if the `async_request` argument
+             True, `None` otherwise.
         """
 
         def run() -> None:

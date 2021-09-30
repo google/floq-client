@@ -23,13 +23,12 @@ def main() -> None:
     """Script entry point."""
 
     client = floq.client.CirqClient(API_KEY)
-    manager = client.managers.JobsQueueManager()
 
     # Get pending jobs
-    manager.print_pending_jobs()
+    client.jobs_queue.print_pending_jobs()
 
     # Flush jobs queue
-    manager.flush()
+    client.jobs_queue.flush()
 
 
 if __name__ == "__main__":

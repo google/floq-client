@@ -30,13 +30,12 @@ def main() -> None:
     """Script entry point."""
 
     client = floq.client.CirqClient(API_KEY)
-    worker = client.managers.WorkerManager()
 
     # Start worker
-    worker.start()
+    client.tpu_worker.start()
 
     # Get worker status
-    status = worker.status()
+    status = client.tpu_worker.status()
     print(status)
 
     # Submit circuit
@@ -46,10 +45,10 @@ def main() -> None:
     print(result)
 
     # Stop worker
-    worker.stop()
+    client.tpu_worker.stop()
 
     # Get worker status
-    status = worker.status()
+    status = client.tpu_worker.status()
     print(status)
 
 

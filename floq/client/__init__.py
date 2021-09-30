@@ -12,18 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Floq service client.
-
-This is a client library for the Floq service.
-
-  Typical usage example:
-    qubits = cirq.LineQubit.range(1)
-    circuit = cirq.Circuit([cirq.X(qubits[0]), cirq.measure(qubits[0])])
-
-    client = floq.client.CirqClient("api-key")
-    result = client.simulator.run(circuit)
-"""
-
+"""This is a client library for the Floq service."""
 from .client import CirqClient
 
 __all__ = ["CirqClient"]

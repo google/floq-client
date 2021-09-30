@@ -19,7 +19,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="floq-client",
-    version="0.1.4",
+    version="0.1.5",
     author="Floq Team",
     author_email="floq-devs@google.com",
     description="Floq Service client",
@@ -32,9 +32,17 @@ setuptools.setup(
         "marshmallow>=3.10.0",
         "marshmallow-dataclass>=8.3.1",
         "marshmallow-enum>=1.5.1",
+        "progressbar2>=3.53.1",
         "requests>=2.24.0",
-        "typeguard>=2.12.1"
+        "typeguard>=2.12.1",
     ],
+    extras_require={
+        "docs": [
+            "sphinx-rtd-theme>=0.5.2",
+            "sphinx>=4.1.2",
+            "sphinxcontrib-napoleon>=0.7",
+        ],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",

@@ -101,7 +101,9 @@ class TestApiClient(unittest.TestCase):
         serialized_error = schemas.encode(schemas.APIErrorSchema, error)
 
         self.mocked_response.headers = {"Content-Type": "application/json"}
-        self.mocked_response.json.return_value = schemas.APIErrorSchema.dump(error)
+        self.mocked_response.json.return_value = schemas.APIErrorSchema.dump(
+            error
+        )
         self.mocked_response.raise_for_status.side_effect = requests.HTTPError
         self.mocked_response.status_code = 500
         self.mocked_response.text = serialized_error
@@ -165,7 +167,7 @@ class TestApiClient(unittest.TestCase):
                 "Content-Length": str(len(test_data)),
                 "Content-Type": "application/json",
             },
-            timeout=30.0
+            timeout=30.0,
         )
 
     def test_delete(self) -> None:

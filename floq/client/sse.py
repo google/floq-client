@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # pylint: disable=too-few-public-methods
-"""This module provides classes for handling Floq API service events stream."""
+"""This module provides interface for handling service events stream."""
 from typing import Any, Callable, Optional, TypeVar
 import marshmallow
 import requests
@@ -22,19 +22,23 @@ import requests
 from . import api_client, schemas
 
 
-TServerSideEvent = TypeVar("TServerSideEvent", bound=schemas.ServerSideEvent)
+TServerSideEvent = TypeVar(
+    "TServerSideEvent", bound=schemas.ServerSideEvent
+)  #: :class:`floq.client.schemas.ServerSideEvent` type object
 
 
-# Function to be called on receiving a new ServerSideEvent
-EventsListener = Callable[[TServerSideEvent, Optional[Any]], None]
+# Function to be called on receiving a new service side event
+EventsListener = Callable[
+    [TServerSideEvent, Optional[Any]], None
+]
 
 
 class EventStreamHandler:
     """Handles service streaming responses.
 
     Attributes:
-        listener: Callback function to be invoked on receiving a new event.
-        context: Optional context to be passed to the callback function.
+        context (Optional[Any]): Optional context to be passed to the callback
+            function.
     """
 
     def __init__(
@@ -53,11 +57,12 @@ class EventStreamHandler:
         self._schema = schema
 
     def open_stream(
-        self, url: str, listener: Optional[EventsListener] = None
+        self, endpoint: str, listener: Optional[EventsListener] = None
     ) -> None:
         """Opens a new stream and starts processing events.
 
         Args:
+            endpoint: API service streaming endpoint.
             listener: Optional callback function called after receiving a new
                 event.
         """
@@ -65,14 +70,28 @@ class EventStreamHandler:
         stream_done = False
 
         while not stream_done:
-            with self._client.get(url, stream=True) as response:
+            with self._client.get(endpoint, stream=True) as response:
+                # If the stream timed out (stream_done=False), then reopen a new
+                # connection. This may happen when we wait for complicated
+                # simulation job results.
                 stream_done = self._process_stream(response)
 
-    def _process_stream(self, response: requests.Response) -> None:
+    def _process_stream(self, response: requests.Response) -> bool:
         """Processes streaming response.
+
+        Decodes incoming server side events and calls the callback function
+        passed to the :meth:`open_stream` method.
+
+        The API service allows the streaming endpoints to be open only for
+        certain amount of time. If the request is complete before the timeout,
+        this method will return True value. Otherwise, the service will send
+        the timeout event and the function will return False.
 
         Args:
             response: Reference to Response object.
+
+        Returns:
+            False if the stream timed out, True otherwise.
         """
         buffer = []
 
@@ -100,7 +119,9 @@ class EventStreamHandler:
                 return False
 
             if callable(self._listener):
-                self._listener(event, self.context)  # pylint: disable=not-callable
+                self._listener(
+                    event, self.context
+                )  # pylint: disable=not-callable
 
         return True
 
