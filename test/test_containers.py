@@ -69,7 +69,10 @@ class TestClient(unittest.TestCase):
         """Tests simulators container."""
         obj = self.container.simulators.remote_simulators()
         for job_type, sim_class in (
-            (schemas.JobType.EXPECTATION, simulators.ExpectationValuesSimulator),
+            (
+                schemas.JobType.EXPECTATION,
+                simulators.ExpectationValuesSimulator,
+            ),
             (schemas.JobType.SAMPLE, simulators.SamplesSimulator),
         ):
             self.assertTrue(isinstance(obj[job_type], sim_class))

@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Floq service abstract client."""
+"""This module provides interfaces for Floq service clients."""
 import abc
 from typing import Any
 
-from .. import containers, jobs_queue, worker
+from . import containers, jobs_queue, simulators, worker
+
 
 class AbstractClient(abc.ABC):  # pylint: disable=too-few-public-methods
-    """Creates and initializes Floq client resources.
+    """An abstract Floq service client.
 
-    This is abstract class that initializes Floq API client and provides client
-    simulator. The subclass must implement simulator() property method and
+    Abstract class that initializes the API client and provides the remote
+    simulator. The subclass must implement :meth:`simulator` property method and
     return concrete simulator implementation.
     """
 
@@ -43,15 +44,33 @@ class AbstractClient(abc.ABC):  # pylint: disable=too-few-public-methods
 
     @property
     def jobs_queue(self) -> jobs_queue.JobsQueueManager:
-        """Floq service jobs queue manager."""
+        """:obj:`floq.client.jobs_queue.JobsQueueManager`: Floq service jobs
+        queue manager."""
         return self._container.managers.JobsQueueManager()
 
     @property
     @abc.abstractmethod
     def simulator(self) -> Any:
-        """Floq service client simulator."""
+        """:obj:`Any`: Remote simulator."""
 
     @property
     def tpu_worker(self) -> worker.WorkerManager:
-        """Floq service TPU worker manager."""
+        """:obj:`floq.client.worker.WorkerManager`: Floq service TPU worker
+        manager."""
         return self._container.managers.WorkerManager()
+
+
+class CirqClient(AbstractClient):  # pylint: disable=too-few-public-methods
+    """Floq service client for cirq based remote simulator.
+
+    This class provides :obj:`floq.client.simulators.cirq.CirqSimulator` as the
+    default simulator, a cirq based implementation that simulates quantum
+    circuits on the cloud.
+    """
+
+    @property
+    def simulator(self) -> simulators.CirqSimulator:
+        """:obj:`floq.client.simulators.cirq.CirqSimulator`: cirq based remote
+        simulator.
+        """
+        return self._container.simulators.CirqSimulator()

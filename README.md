@@ -12,6 +12,10 @@ source venv/bin/activate
 pip install floq_client
 ```
 
+## Documentation
+
+Full documentation is available at https://floq-client.readthedocs.io/
+
 ## Usage
 
 Currently the Floq client supports cirq's `SimulatesSamples` and the
@@ -19,7 +23,7 @@ Currently the Floq client supports cirq's `SimulatesSamples` and the
 running sampling and calculating expectation values of single circuits, batches
 of circuits or circuits to be resolved with parameter value sweeps.
 
-Check out samples in the [samples](./samples) directory.
+Check out the samples in the [samples](./samples) directory.
 
 ### SimulatesSamples
 

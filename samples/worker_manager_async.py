@@ -18,6 +18,7 @@ This code makes synchronous request to Floq service to start TPU worker and
 sends circuit for execution regardless of the worker status. Finally, when the
 quantum circuit simulation is done, the script sends request to stop the worker.
 """
+import cirq
 import floq.client
 import floq.client.schemas
 
@@ -28,10 +29,9 @@ def main() -> None:
     """Script entry point."""
 
     client = floq.client.CirqClient(API_KEY)
-    worker = client.managers.WorkerManager()
 
     # Start worker
-    worker.start(True)
+    client.tpu_worker.start(True)
 
     # Submit circuit
     qubits = cirq.LineQubit.range(1)
@@ -40,7 +40,7 @@ def main() -> None:
     print(result)
 
     # Stop worker
-    thread = worker.stop(True)
+    thread = client.tpu_worker.stop(True)
     thread.join()
 
 

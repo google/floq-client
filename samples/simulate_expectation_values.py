@@ -18,6 +18,7 @@ import floq.client
 
 API_KEY = "api_key"
 
+
 def main() -> None:
     """Script entry point."""
     qubits = cirq.LineQubit.range(26)
@@ -27,6 +28,7 @@ def main() -> None:
     client = floq.client.CirqClient(API_KEY)
     result = client.simulator.simulate_expectation_values(circuit, observables)
     print(result)
+
 
 if __name__ == "__main__":
     main()

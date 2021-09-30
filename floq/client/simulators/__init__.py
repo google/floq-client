@@ -16,8 +16,4 @@
 from .cirq import CirqSimulator
 from .floq import ExpectationValuesSimulator, SamplesSimulator
 
-__all__ = [
-    "CirqSimulator",
-    "ExpectationValuesSimulator",
-    "SamplesSimulator"
-]
+__all__ = ["CirqSimulator", "ExpectationValuesSimulator", "SamplesSimulator"]

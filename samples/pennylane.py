@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Integration of Floq cirq client with PennyLane-Cirq"""
-import floq.client
-import pennylane as qml
 import numpy as np
+import pennylane as qml
+import floq.client
 
 API_KEY = "API_KEY"
 

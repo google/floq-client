@@ -12,32 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Floq client errors."""
+"""This module provides Floq client errors."""
 import uuid
 
 
 class FloqError(Exception):
-    """Generic Floq exception."""
+    """Generic Floq exception.
 
-
-class ResumePollingError(FloqError):
-    """Resume polling error."""
-
-    def __init__(self) -> None:
-        """Creates ResumePollingError class instance."""
-        super().__init__("No jobs have been previously queried")
+    All Floq client errors extend this error class.
+    """
 
 
 class SerializationError(FloqError):
-    """Cirq serialization error."""
+    """`cirq` serialization error."""
 
     def __init__(self) -> None:
         """Creates SerializationError class instance."""
-        super().__init__("Cirq encountered a serialization error.")
+        super().__init__("cirq encountered a serialization error.")
 
 
 class ServiceError(FloqError):
-    """Generic API service exception."""
+    """Floq service serror.
+
+    Attributes:
+        message (int): User friendly API error message.
+        status_code (str): HTTP error code.
+    """
 
     def __init__(self, status_code: int, message: str) -> None:
         """Creates ServiceError class instance.
@@ -52,7 +52,12 @@ class ServiceError(FloqError):
 
 
 class SimulationError(FloqError):
-    """Simulation job error."""
+    """Simulation error.
+
+    Attributes:
+        job_id (uuid.UUID): Unique job id.
+        message (str): User friendly message explaining why the job failed.
+    """
 
     def __init__(self, job_id: uuid.UUID, message: str) -> None:
         """Creates SimulationError class instance.
@@ -61,7 +66,8 @@ class SimulationError(FloqError):
             job_id: Unique job id.
             message: Simulation error message.
         """
-        super().__init__(f"Simulation job {str(job_id)} failed with message:"
-                         f" {message}")
+        super().__init__(
+            f"Simulation job {str(job_id)} failed with message: {message}"
+        )
         self.job_id = job_id
         self.message = message

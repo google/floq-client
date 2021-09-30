@@ -12,18 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Components dependencies structure.
+"""This module provides components dependencies structure.
 
-Rather than manually creating class objects we are using dependency-injector
-framework to declare components dependencies (containers) and let the
-library do the work for us.
+.. _dependency-injector:
+   https://python-dependency-injector.ets-labs.org/
 
-Our structure is declared using few independent containers:
-  - Core container contains core components that are being used by other
-    classes.
-  - Managers container provides clients for managing Floq service resources.
-  - Simulators container is dedicated for creating Floq service simulators
-  - Client container connects all containers together.
+Rather than manually creating class objects we are using `dependency-injector`_
+framework to declare components dependencies (containers) and let the library
+do the work for us.
+
+Our structure is declared using following containers:
+
+- :class:`.Core` container contains core components that are being used by other
+  classes.
+- :class:`.Managers` container provides clients for managing Floq service
+  resources.
+- :class:`.Simulators` container is dedicated for creating Floq service
+  simulators.
+- :class:`.Client` container connects all containers together.
 """
 
 # pylint: disable=c-extension-no-member, import-error, too-few-public-methods
@@ -37,8 +43,10 @@ from . import api_client, jobs_queue, schemas, simulators, sse, worker
 class Core(dependency_injector.containers.DeclarativeContainer):
     """Floq client core components."""
 
+    #: Client configuration provider.
     config = dependency_injector.providers.Configuration(strict=True)
 
+    #: :class:`floq.client.api_client.ApiClient` class provider.
     ApiClient = dependency_injector.providers.Singleton(
         api_client.ApiClient,
         hostname=config.hostname,
@@ -46,21 +54,25 @@ class Core(dependency_injector.containers.DeclarativeContainer):
         use_ssl=config.use_ssl,
     )
 
+    #: :class:`floq.client.sse.TaskStatusStreamHandler` class provider.
     TaskStatusStreamHandler = dependency_injector.providers.Factory(
         sse.TaskStatusStreamHandler, client=ApiClient
     )
 
 
 class Managers(dependency_injector.containers.DeclarativeContainer):
-    """Floq API resources managers."""
+    """Floq service resources managers."""
 
+    #: Reference to :class:`Core` container.
     core = dependency_injector.providers.DependenciesContainer()
 
+    #: :class:`floq.client.jobs_queue.JobsQueueManager` class provider.
     JobsQueueManager = dependency_injector.providers.Factory(
         jobs_queue.JobsQueueManager,
         client=core.ApiClient,
         handler=core.TaskStatusStreamHandler,
     )
+    #: :class:`floq.client.worker.WorkerManager` class provider.
     WorkerManager = dependency_injector.providers.Factory(
         worker.WorkerManager,
         client=core.ApiClient,
@@ -71,8 +83,10 @@ class Managers(dependency_injector.containers.DeclarativeContainer):
 class Simulators(dependency_injector.containers.DeclarativeContainer):
     """Floq remote simulators."""
 
+    #: Reference to :class:`Core` container.
     core = dependency_injector.providers.DependenciesContainer()
 
+    #: Map of remote simulators provider.
     remote_simulators = dependency_injector.providers.Dict(
         {
             schemas.JobType.EXPECTATION: dependency_injector.providers.Factory(
@@ -92,6 +106,7 @@ class Simulators(dependency_injector.containers.DeclarativeContainer):
         }
     )
 
+    #: :class:`floq.client.simulators.CirqSimulator` class provider.
     CirqSimulator = dependency_injector.providers.Factory(
         simulators.CirqSimulator, simulators=remote_simulators
     )
@@ -100,6 +115,9 @@ class Simulators(dependency_injector.containers.DeclarativeContainer):
 class Client(dependency_injector.containers.DeclarativeContainer):
     """Floq client main container."""
 
+    #: Reference to :class:`Core` container.
     core = dependency_injector.providers.Container(Core)
+    #: Reference to :class:`Managers` container
     managers = dependency_injector.providers.Container(Managers, core=core)
+    #: Reference to :class:`Simulators` container
     simulators = dependency_injector.providers.Container(Simulators, core=core)

@@ -20,11 +20,11 @@ import cirq
 from floq.client import containers, schemas, simulators
 
 
-# TODO(jacksonwb): Add the follow run method tests
+# TODO: Add the follow run method tests
 # * None, Actual, Multi - param_resolvers values and throw handling
 # * run_sweep - values
 
-# TODO(jacksonwb): Add the following expectation method tests
+# TODO: Add the following expectation method tests
 # * None, Single, Multi Paulisums as observalbe argument
 # * simulate_expectation_values_sweep input parameters
 class TestCirqSimulator(unittest.TestCase):
@@ -67,7 +67,7 @@ class TestCirqSimulator(unittest.TestCase):
         circuit += [cirq.measure(qubits[i]) for i in range(6)]
         expected_result = cirq.Simulator().run(circuit)
 
-        self.mocked_simulator.run.return_value = expected_result._measurements
+        self.mocked_simulator.run.return_value = expected_result
 
         # Run test
         actual_result = self.simulator.run(circuit)
@@ -75,7 +75,7 @@ class TestCirqSimulator(unittest.TestCase):
         # Verification
         self.assertEqual(actual_result, expected_result)
         self.mocked_simulator.run.assert_called_once_with(
-            circuit, cirq.ParamResolver(None), 1
+            circuit, cirq.ParamResolver({}), 1
         )
 
     def test_simulate_expectation_values(self) -> None:

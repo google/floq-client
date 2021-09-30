@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base class for interaction with the Floq REST API."""
+"""This module provides an interface for communicating with Floq API service."""
 import os
 from typing import Optional
 import requests
@@ -21,7 +21,7 @@ from . import errors, schemas
 
 
 class ApiClient:
-    """Makes HTTP requests to the Floq REST API."""
+    """Makes HTTP requests to the Floq API service."""
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class ApiClient:
         """Creates ApiClient class instance.
 
         Args:
-            api_url: Floq API service hostname.
+            hostname: Floq API service hostname.
             api_key: Floq API authorization key.
             version: API version.
             use_ssl: Indicates if should use HTTPS protocol.
@@ -46,26 +46,29 @@ class ApiClient:
             {"Accept": "application/json", "X-API-Key": api_key}
         )
 
-    def get(self, path: str, stream: bool = False) -> requests.Response:
+    def get(self, endpoint: str, stream: bool = False) -> requests.Response:
         """Sends GET request to the service.
 
         Args:
-            path: REST API path.
-            stream: Starts streaming response.
+            endpoint: API endpoint.
+            stream: Indicates if streaming response should start.
 
         Returns:
-            Response object.
+            `request.Response` object.
         """
-        return self._make_request("get", path, stream=stream)
+        return self._make_request("get", endpoint, stream=stream)
 
-    def post(self, path: str, data: Optional[str] = None) -> requests.Response:
+    def post(
+        self, endpoint: str, data: Optional[str] = None
+    ) -> requests.Response:
         """Sends POST request to the service.
 
         Args:
-            path: REST API path.
+            endpoint: API endpoint.
+            data: Data to be sent to the service.
 
         Returns:
-            Response object.
+            `request.Response` object.
         """
         headers = {}
         if data is not None:
@@ -76,41 +79,41 @@ class ApiClient:
 
         return self._make_request(
             "post",
-            path,
+            endpoint,
             data=data,
             headers=headers,
         )
 
-    def delete(self, path: str) -> requests.Response:
+    def delete(self, endpoint: str) -> requests.Response:
         """Sends DELETE request to the service.
 
         Args:
-            path: REST API path.
+            endpoint: API endpoint.
 
         Returns:
-            Response object.
+            `request.Response` object.
         """
-        return self._make_request("delete", path)
+        return self._make_request("delete", endpoint)
 
     def _make_request(
-        self, method: str, path: str, *args, **kwargs
+        self, method: str, endpoint: str, *args, **kwargs
     ) -> requests.Response:
         """Makes API request.
 
         Args:
             operation: HTTP method.
-            path: REST API path.
+            endpoint: API endpoint.
 
         Returns:
-            Response object.
+            `request.Response` object.
 
         Raises:
-            ServiceError if the API returned error code.
+            ServiceError: The API returned error response.
         """
         try:
             response = self._session.request(
                 method,
-                os.path.join(self._api_url, path),
+                os.path.join(self._api_url, endpoint),
                 *args,
                 timeout=30.0,
                 **kwargs,
